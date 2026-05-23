@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+/>
+
+<title>QR Scanner</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+
+body{
+  margin:0;
+  padding:20px;
+  background:#0f172a;
+  font-family:Arial;
+  color:white;
+  text-align:center;
+}
+
+.container{
+  max-width:450px;
+  margin:auto;
+  background:#1e293b;
+  padding:20px;
+  border-radius:20px;
+}
+
+h1{
+  color:#38bdf8;
+}
+
+#reader{
+  width:100%;
+  border-radius:15px;
+  overflow:hidden;
+}
+
+button{
+  margin-top:15px;
+  padding:12px 20px;
+  border:none;
+  border-radius:10px;
+  background:#38bdf8;
+  color:black;
+  font-size:16px;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+#status{
+  margin-top:15px;
+  padding:12px;
+  border-radius:10px;
+  background:#334155;
+}
+
+.success{
+  background:#16a34a !important;
+}
+
+.error{
+  background:#dc2626 !important;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>QR Scanner</h1>
+
+<div id="reader"></div>
+
+<button onclick="switchCamera()">
+Switch Camera
+</button>
+
+<div id="status">
+Ready to scan
+</div>
+
+</div>
+
+<script>
+
+let html5QrCode;
+let cameras = [];
+let currentCamera = 0;
+
+let lastText = "";
+let lastTime = 0;
+
+async function startScanner(cameraId){
+
+  if(html5QrCode){
+    try{
+      await html5QrCode.stop();
+    }catch(e){}
+  }
+
+  html5QrCode =
+    new Html5Qrcode("reader");
+
+  html5QrCode.start(
+    cameraId,
+    {
+      fps:10,
+      qrbox:{
+        width:250,
+        height:250
+      }
+    },
+    onScanSuccess
+  );
+
+}
+
+async function init(){
+
+  cameras =
+    await Html5Qrcode.getCameras();
+
+  if(cameras.length === 0){
+
+    showStatus(
+      "No camera found",
+      true
+    );
+
+    return;
+  }
+
+  let backCam =
+    cameras.find(cam =>
+      cam.label
+      .toLowerCase()
+      .includes("back")
+    );
+
+  if(backCam){
+    currentCamera =
+      cameras.indexOf(backCam);
+  }
+
+  startScanner(
+    cameras[currentCamera].id
+  );
+
+}
+
+async function switchCamera(){
+
+  if(cameras.length <= 1){
+
+    showStatus(
+      "Only one camera",
+      true
+    );
+
+    return;
+  }
+
+  currentCamera =
+    (currentCamera + 1)
+    % cameras.length;
+
+  startScanner(
+    cameras[currentCamera].id
+  );
+
+}
+
+function onScanSuccess(decodedText){
+
+  const now = Date.now();
+
+  if(
+    decodedText === lastText &&
+    now - lastTime < 3000
+  ){
+    return;
+  }
+
+  lastText = decodedText;
+  lastTime = now;
+
+  saveData(decodedText);
+
+}
+
+function saveData(qrData){
+
+  if(
+    typeof google === "undefined" ||
+    !google.script ||
+    !google.script.run
+  ){
+
+    showStatus(
+      "Running outside Apps Script",
+      true
+    );
+
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(){
+
+      showStatus(
+        "Saved: " + qrData
+      );
+
+    })
+    .withFailureHandler(function(err){
+
+      showStatus(
+        err.message,
+        true
+      );
+
+    })
+    .saveScan({
+      qrData: qrData
+    });
+
+}
+
+function showStatus(msg, isError=false){
+
+  const status =
+    document.getElementById("status");
+
+  status.innerText = msg;
+
+  status.className = "";
+
+  if(isError){
+    status.classList.add("error");
+  }else{
+    status.classList.add("success");
+  }
+
+}
+
+init();
+
+</script>
+
+</body>
+</html>
