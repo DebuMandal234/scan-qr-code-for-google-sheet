@@ -1,4 +1,426 @@
+
 <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0"
+/>
+
+<title>QR Scanner</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+
+body{
+  margin:0;
+  padding:20px;
+  background:#0f172a;
+  font-family:Arial;
+  color:white;
+  text-align:center;
+}
+
+.container{
+  max-width:450px;
+  margin:auto;
+  background:#1e293b;
+  padding:20px;
+  border-radius:20px;
+}
+
+h1{
+  color:#38bdf8;
+}
+
+#reader{
+  width:100%;
+  border-radius:15px;
+  overflow:hidden;
+  margin-top:15px;
+}
+
+button{
+  margin-top:15px;
+  padding:12px 20px;
+  border:none;
+  border-radius:10px;
+  background:#38bdf8;
+  color:black;
+  font-size:16px;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+input{
+  width:100%;
+  padding:12px;
+  border-radius:10px;
+  border:none;
+  margin-top:10px;
+  font-size:14px;
+}
+
+#status{
+  margin-top:15px;
+  padding:12px;
+  border-radius:10px;
+  background:#334155;
+  word-break:break-word;
+}
+
+.success{
+  background:#16a34a !important;
+}
+
+.error{
+  background:#dc2626 !important;
+}
+
+.hidden{
+  display:none;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>QR Scanner</h1>
+
+<!-- SETUP UI -->
+
+<div id="setupPage">
+
+  <p>
+    Enter Google Apps Script Web App URL
+  </p>
+
+  <input
+    type="text"
+    id="webAppUrl"
+    placeholder="Paste deployed web app URL"
+  />
+
+  <button onclick="saveWebAppUrl()">
+    Save & Start Scanner
+  </button>
+
+</div>
+
+<!-- SCANNER UI -->
+
+<div id="scannerPage" class="hidden">
+
+  <div id="reader"></div>
+
+  <button onclick="switchCamera()">
+    Switch Camera
+  </button>
+
+  <button onclick="changeUrl()">
+    Change Web App URL
+  </button>
+
+</div>
+
+<div id="status">
+Ready
+</div>
+
+</div>
+
+<script>
+
+let html5QrCode;
+let cameras = [];
+let currentCamera = 0;
+
+let lastText = "";
+let lastTime = 0;
+
+const STORAGE_KEY = "google_webapp_url";
+
+function showStatus(msg, isError=false){
+
+  const status =
+    document.getElementById("status");
+
+  status.innerText = msg;
+
+  status.className = "";
+
+  if(isError){
+    status.classList.add("error");
+  }else{
+    status.classList.add("success");
+  }
+
+}
+
+function saveWebAppUrl(){
+
+  const url =
+    document.getElementById("webAppUrl")
+    .value
+    .trim();
+
+  if(!url){
+
+    showStatus(
+      "Please enter URL",
+      true
+    );
+
+    return;
+  }
+
+  localStorage.setItem(
+    STORAGE_KEY,
+    url
+  );
+
+  startApp();
+
+}
+
+function changeUrl(){
+
+  localStorage.removeItem(
+    STORAGE_KEY
+  );
+
+  location.reload();
+
+}
+
+async function startApp(){
+
+  document
+    .getElementById("setupPage")
+    .classList.add("hidden");
+
+  document
+    .getElementById("scannerPage")
+    .classList.remove("hidden");
+
+  await initScanner();
+
+}
+
+async function initScanner(){
+
+  try{
+
+    cameras =
+      await Html5Qrcode.getCameras();
+
+    if(cameras.length === 0){
+
+      showStatus(
+        "No camera found",
+        true
+      );
+
+      return;
+    }
+
+    let backCam =
+      cameras.find(cam =>
+        cam.label
+        .toLowerCase()
+        .includes("back")
+      );
+
+    if(backCam){
+
+      currentCamera =
+        cameras.indexOf(backCam);
+
+    }
+
+    startScanner(
+      cameras[currentCamera].id
+    );
+
+  }catch(err){
+
+    showStatus(
+      err.message,
+      true
+    );
+
+  }
+
+}
+
+async function startScanner(cameraId){
+
+  if(html5QrCode){
+
+    try{
+      await html5QrCode.stop();
+    }catch(e){}
+
+  }
+
+  html5QrCode =
+    new Html5Qrcode("reader");
+
+  html5QrCode.start(
+    cameraId,
+    {
+      fps:10,
+      qrbox:{
+        width:250,
+        height:250
+      },
+
+      rememberLastUsedCamera:true
+
+    },
+    onScanSuccess
+  );
+
+}
+
+async function switchCamera(){
+
+  if(cameras.length <= 1){
+
+    showStatus(
+      "Only one camera",
+      true
+    );
+
+    return;
+
+  }
+
+  currentCamera =
+    (currentCamera + 1)
+    % cameras.length;
+
+  startScanner(
+    cameras[currentCamera].id
+  );
+
+}
+
+function onScanSuccess(decodedText){
+
+  const now = Date.now();
+
+  if(
+    decodedText === lastText &&
+    now - lastTime < 3000
+  ){
+    return;
+  }
+
+  lastText = decodedText;
+  lastTime = now;
+
+  sendToGoogleSheet(decodedText);
+
+}
+
+async function sendToGoogleSheet(qrData){
+
+  const webAppUrl =
+    localStorage.getItem(
+      STORAGE_KEY
+    );
+
+  try{
+
+    const response =
+      await fetch(webAppUrl, {
+
+        method:"POST",
+
+        headers:{
+          "Content-Type":"application/json"
+        },
+
+        body:JSON.stringify({
+
+          qrData: qrData,
+          timestamp:
+            new Date().toISOString()
+
+        })
+
+      });
+
+    const result =
+      await response.json();
+
+    if(result.success){
+
+      showStatus(
+        "Saved: " + qrData
+      );
+
+    }else{
+
+      showStatus(
+        result.message ||
+        "Failed",
+        true
+      );
+
+    }
+
+  }catch(err){
+
+    showStatus(
+      err.message,
+      true
+    );
+
+  }
+
+}
+
+window.onload = function(){
+
+  const savedUrl =
+    localStorage.getItem(
+      STORAGE_KEY
+    );
+
+  if(savedUrl){
+
+    startApp();
+
+  }else{
+
+    document
+      .getElementById("setupPage")
+      .classList.remove("hidden");
+
+  }
+
+};
+
+</script>
+
+</body>
+</html>
+
+
+
+
+
+
+
+
+<!-- <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -255,4 +677,4 @@ init();
 </script>
 
 </body>
-</html>
+</html> -->
