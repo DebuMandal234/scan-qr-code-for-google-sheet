@@ -338,22 +338,24 @@ async function sendToGoogleSheet(qrData){
 
   try{
 
+    const formData =
+      new FormData();
+
+    formData.append(
+      "qrData",
+      qrData
+    );
+
+    formData.append(
+      "timestamp",
+      new Date().toISOString()
+    );
+
     const response =
       await fetch(webAppUrl, {
 
         method:"POST",
-
-        headers:{
-          "Content-Type":"application/json"
-        },
-
-        body:JSON.stringify({
-
-          qrData: qrData,
-          timestamp:
-            new Date().toISOString()
-
-        })
+        body: formData
 
       });
 
@@ -387,6 +389,7 @@ async function sendToGoogleSheet(qrData){
 
 }
 
+  
 window.onload = function(){
 
   const savedUrl =
