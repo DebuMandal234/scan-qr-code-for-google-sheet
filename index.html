@@ -1,8 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
 <meta charset="UTF-8" />
+
 <meta
   name="viewport"
   content="width=device-width, initial-scale=1.0"
@@ -54,13 +55,15 @@ button{
   cursor:pointer;
 }
 
-input{
+input,
+select{
   width:100%;
   padding:12px;
   border-radius:10px;
   border:none;
   margin-top:10px;
   font-size:14px;
+  box-sizing:border-box;
 }
 
 #status{
@@ -83,7 +86,12 @@ input{
   display:none;
 }
 
+.setting-box{
+  margin-top:15px;
+}
+
 </style>
+
 </head>
 
 <body>
@@ -92,7 +100,7 @@ input{
 
 <h1>QR Scanner</h1>
 
-<!-- SETUP UI -->
+<!-- SETUP PAGE -->
 
 <div id="setupPage">
 
@@ -112,11 +120,37 @@ input{
 
 </div>
 
-<!-- SCANNER UI -->
+<!-- SCANNER PAGE -->
 
 <div id="scannerPage" class="hidden">
 
+  <!-- DUPLICATE OPTION -->
+
+  <div class="setting-box">
+
+    <label>
+      Duplicate Scan Allowed?
+    </label>
+
+    <select id="duplicateMode">
+
+      <option value="yes">
+        Yes
+      </option>
+
+      <option value="no">
+        No
+      </option>
+
+    </select>
+
+  </div>
+
+  <!-- QR READER -->
+
   <div id="reader"></div>
+
+  <!-- BUTTONS -->
 
   <button onclick="switchCamera()">
     Switch Camera
@@ -128,6 +162,8 @@ input{
 
 </div>
 
+<!-- STATUS -->
+
 <div id="status">
 Ready
 </div>
@@ -137,37 +173,75 @@ Ready
 <script>
 
 let html5QrCode;
+
 let cameras = [];
+
 let currentCamera = 0;
 
 let lastText = "";
+
 let lastTime = 0;
 
-const STORAGE_KEY = "google_webapp_url";
+// STORAGE KEY
 
-function showStatus(msg, isError=false){
+const STORAGE_KEY =
+  "google_webapp_url";
+
+// DUPLICATE TRACKER
+
+const scannedItems =
+  new Set();
+
+// BEEP SOUND
+
+const beepSound =
+  new Audio(
+    "https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"
+  );
+
+// STATUS FUNCTION
+
+function showStatus(
+  msg,
+  isError=false
+){
 
   const status =
-    document.getElementById("status");
+    document.getElementById(
+      "status"
+    );
 
   status.innerText = msg;
 
   status.className = "";
 
   if(isError){
-    status.classList.add("error");
+
+    status.classList.add(
+      "error"
+    );
+
   }else{
-    status.classList.add("success");
+
+    status.classList.add(
+      "success"
+    );
+
   }
 
 }
 
+// SAVE URL
+
 function saveWebAppUrl(){
 
   const url =
-    document.getElementById("webAppUrl")
-    .value
-    .trim();
+    document
+      .getElementById(
+        "webAppUrl"
+      )
+      .value
+      .trim();
 
   if(!url){
 
@@ -188,6 +262,8 @@ function saveWebAppUrl(){
 
 }
 
+// CHANGE URL
+
 function changeUrl(){
 
   localStorage.removeItem(
@@ -198,28 +274,43 @@ function changeUrl(){
 
 }
 
+// START APP
+
 async function startApp(){
 
   document
-    .getElementById("setupPage")
-    .classList.add("hidden");
+    .getElementById(
+      "setupPage"
+    )
+    .classList.add(
+      "hidden"
+    );
 
   document
-    .getElementById("scannerPage")
-    .classList.remove("hidden");
+    .getElementById(
+      "scannerPage"
+    )
+    .classList.remove(
+      "hidden"
+    );
 
   await initScanner();
 
 }
+
+// INIT SCANNER
 
 async function initScanner(){
 
   try{
 
     cameras =
-      await Html5Qrcode.getCameras();
+      await Html5Qrcode
+        .getCameras();
 
-    if(cameras.length === 0){
+    if(
+      cameras.length === 0
+    ){
 
       showStatus(
         "No camera found",
@@ -239,7 +330,9 @@ async function initScanner(){
     if(backCam){
 
       currentCamera =
-        cameras.indexOf(backCam);
+        cameras.indexOf(
+          backCam
+        );
 
     }
 
@@ -258,23 +351,35 @@ async function initScanner(){
 
 }
 
-async function startScanner(cameraId){
+// START CAMERA
+
+async function startScanner(
+  cameraId
+){
 
   if(html5QrCode){
 
     try{
+
       await html5QrCode.stop();
+
     }catch(e){}
 
   }
 
   html5QrCode =
-    new Html5Qrcode("reader");
+    new Html5Qrcode(
+      "reader"
+    );
 
   html5QrCode.start(
+
     cameraId,
+
     {
+
       fps:10,
+
       qrbox:{
         width:250,
         height:250
@@ -283,14 +388,20 @@ async function startScanner(cameraId){
       rememberLastUsedCamera:true
 
     },
+
     onScanSuccess
+
   );
 
 }
 
+// SWITCH CAMERA
+
 async function switchCamera(){
 
-  if(cameras.length <= 1){
+  if(
+    cameras.length <= 1
+  ){
 
     showStatus(
       "Only one camera",
@@ -311,27 +422,94 @@ async function switchCamera(){
 
 }
 
-function onScanSuccess(decodedText){
+// ON SCAN SUCCESS
 
-  const now = Date.now();
+function onScanSuccess(
+  decodedText
+){
+
+  const now =
+    Date.now();
+
+  // PREVENT RAPID SAME SCAN
 
   if(
+
     decodedText === lastText &&
-    now - lastTime < 3000
+
+    now - lastTime < 1500
+
   ){
+
     return;
+
   }
 
   lastText = decodedText;
+
   lastTime = now;
 
-  sendToGoogleSheet(decodedText);
+  // CHECK DUPLICATE MODE
+
+  const duplicateMode =
+
+    document
+      .getElementById(
+        "duplicateMode"
+      )
+      .value;
+
+  // BLOCK DUPLICATE
+
+  if(
+
+    duplicateMode === "no" &&
+
+    scannedItems.has(
+      decodedText
+    )
+
+  ){
+
+    showStatus(
+
+      "Duplicate Blocked: " +
+      decodedText,
+
+      true
+
+    );
+
+    return;
+
+  }
+
+  // SAVE TO MEMORY
+
+  scannedItems.add(
+    decodedText
+  );
+
+  // PLAY SOUND
+
+  beepSound.play();
+
+  // SEND DATA
+
+  sendToGoogleSheet(
+    decodedText
+  );
 
 }
 
-async function sendToGoogleSheet(qrData){
+// SEND DATA
+
+async function sendToGoogleSheet(
+  qrData
+){
 
   const webAppUrl =
+
     localStorage.getItem(
       STORAGE_KEY
     );
@@ -347,17 +525,29 @@ async function sendToGoogleSheet(qrData){
     );
 
     formData.append(
+
       "timestamp",
-      new Date().toISOString()
+
+      new Date()
+      .toISOString()
+
     );
 
     const response =
-      await fetch(webAppUrl, {
 
-        method:"POST",
-        body: formData
+      await fetch(
 
-      });
+        webAppUrl,
+
+        {
+
+          method:"POST",
+
+          body:formData
+
+        }
+
+      );
 
     const result =
       await response.json();
@@ -371,9 +561,12 @@ async function sendToGoogleSheet(qrData){
     }else{
 
       showStatus(
+
         result.message ||
         "Failed",
+
         true
+
       );
 
     }
@@ -389,10 +582,12 @@ async function sendToGoogleSheet(qrData){
 
 }
 
-  
+// PAGE LOAD
+
 window.onload = function(){
 
   const savedUrl =
+
     localStorage.getItem(
       STORAGE_KEY
     );
@@ -404,8 +599,12 @@ window.onload = function(){
   }else{
 
     document
-      .getElementById("setupPage")
-      .classList.remove("hidden");
+      .getElementById(
+        "setupPage"
+      )
+      .classList.remove(
+        "hidden"
+      );
 
   }
 
@@ -415,8 +614,3 @@ window.onload = function(){
 
 </body>
 </html>
-
-
-
-
-
